@@ -1,3 +1,6 @@
+#include <iostream>
+#include <fstream>
+#include <bitset>
 #include "fm.h"
 
 using segment = std::array<oc::u64, 2>;
@@ -6,8 +9,20 @@ using block = oc::block;
 namespace osuCrypto
 {
 
-
     namespace OT_for_FPSI{
+        /*void printBlock(const osuCrypto::block& b, std::ostream& os = std::cout) {
+        const uint8_t* p = reinterpret_cast<const uint8_t*>(&b);
+        for (size_t i = 0; i < sizeof(block); ++i) {
+            os << std::hex << std::setw(2) << std::setfill('0') << (int)p[i];
+        }
+            os << std::dec;
+        }*/
+       void printBlock(const osuCrypto::block& b, std::ostream& os = std::cout){
+        auto data = b.get<std::uint64_t>();
+        //std::bitset<64> highBits(data[1]);
+        //std::bitset<64> lowBits(data[0]);   
+        os << std::to_string(data[0]) << " " << std::to_string(data[1]);
+       }
         std::vector<element> run_ot_receiver(coproto::LocalAsyncSocket& channel, BitVector& choices, const u64& numOTs){
             std::vector<element> result;
             std::vector<block> recvMsg(numOTs);
@@ -162,9 +177,10 @@ namespace osuCrypto
                         for(u64 j = 0; j < Msg_Length; j++){
                             recvMsg[j] = maskMsg_1[i * Msg_Length + j] ^ prng.get<block>();
                         }
+                    result.push_back(recvMsg);
                     }
                     
-                    result.push_back(recvMsg);
+                    //result.push_back(recvMsg);
                 }
             }
             else
@@ -203,9 +219,10 @@ namespace osuCrypto
                         for(u64 j = 0; j < Msg_Length; j++){
                             recvMsg[j] = maskMsg_1[i * Msg_Length + j] ^ prng.get<block>();
                         }
+                        result.push_back(recvMsg);
                     }
                     
-                    result.push_back(recvMsg);
+                    //result.push_back(recvMsg);
                 }
             }
 
@@ -285,7 +302,7 @@ namespace osuCrypto
             }
         }
 
-        void last_ot_recv(coproto::LocalAsyncSocket* channel, u64 send_set_size, BitVector* recv_out, u64 dimension){
+        void last_ot_recv(coproto::LocalAsyncSocket* channel, u64 send_set_size, BitVector* recv_out, u64 dimension, const std::string& result_file){
             
             // std::vector<u8> send_out;
             // coproto::sync_wait((*channel).flush());
@@ -294,6 +311,21 @@ namespace osuCrypto
             BitVector result(*recv_out);
             // printf("result size = %d\n", result.size());
             auto result_element = OT_for_FPSI::run_ot_receiver_long_half_one(*channel, result, result.size(), dimension / 2);
+            std::ofstream ofs(result_file);   // 打开输出文件
+            if (!ofs.is_open()) {
+                std::cerr << "无法打开文件: " << result_file << std::endl;
+                exit(1);  // 或者抛异常
+            }
+
+            for (const auto& row : result_element) {          
+                for (const auto& val : row) {      
+                    printBlock(val, ofs);   // 输出到文件流
+                    ofs << " ";
+                }
+                ofs << std::endl;           
+            }
+
+            ofs.close();  // 关闭文件
             return;
         }
 
@@ -311,9 +343,22 @@ namespace osuCrypto
 
             send_result[0].resize(dimension / 2);
             send_result[1].resize(dimension / 2);
-
+            std::ofstream fout("debug.txt");
             for(u64 i = 0; i < (*sender_elements).size(); i++){
-                memcpy(send_result[1].data(), (*sender_elements)[i].data(), dimension * sizeof(u64)/sizeof(block));
+                memcpy(send_result[1].data(), (*sender_elements)[i].data(), dimension * sizeof(u64));
+                fout << "sender_elements:\n";
+                for(auto& b: (*sender_elements)[i]){
+                    fout << std::to_string(b);
+                    fout << " ";
+                }
+                fout << std::endl;
+
+                fout << "send_result:\n";
+                for (auto& b: send_result[1]){
+                    printBlock(b,fout);
+                    fout << " ";
+                }
+                fout << std::endl;
                 send_results.push_back(send_result);
             }
             
@@ -888,7 +933,7 @@ namespace osuCrypto
         std::vector<std::vector<u64>>* receiver_elements, std::vector<Rist25519_point>* recv_vec_dhkk_seedsum,
         std::vector<std::vector<block>>* fmat_vals,
         u64 dimension, u64 delta, u64 p,
-        ipcl::KeyPair paillier_key, DH25519_number recv_dh_k
+        ipcl::KeyPair paillier_key, DH25519_number recv_dh_k, const std::string& result_file
         ){
             std::vector<block> fmat_keys;
         
@@ -1015,7 +1060,7 @@ namespace osuCrypto
 
             //std::cout << "fmat_paillier_recv_online: run_ot_receiver begin" << std::endl;
             
-            OT_for_FPSI::last_ot_recv(channel, result.size(), &result, dimension);
+            OT_for_FPSI::last_ot_recv(channel, result.size(), &result, dimension, result_file);
             //std::cout << "fmat_paillier_recv_online: run_ot_receiver done" << std::endl;
 
             return;
@@ -1122,7 +1167,7 @@ namespace osuCrypto
         std::vector<std::vector<u64>>* receiver_elements, std::vector<Rist25519_point>* recv_vec_dhkk_seedsum,
         std::vector<std::vector<block>>* fmat_vals,
         u64 dimension, u64 delta,
-        ipcl::KeyPair paillier_key
+        ipcl::KeyPair paillier_key, const std::string& result_file
         ){
             std::vector<block> fmat_keys;
         
@@ -1239,7 +1284,7 @@ namespace osuCrypto
 
             // auto ot_result = OT_for_FPSI::run_ot_receiver(*channel, result, result.size());
 
-            OT_for_FPSI::last_ot_recv(channel, result.size(), &result, dimension);
+            OT_for_FPSI::last_ot_recv(channel, result.size(), &result, dimension, result_file);
 
             return;
         }

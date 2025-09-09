@@ -23,46 +23,74 @@ namespace osuCrypto
         const u64 delta = cmd.getOr("delta", 10);
         const u64 side_length = 1;
         const u64 p = cmd.getOr("p", 2);
-        const u64 recv_set_size = 1ull << cmd.getOr("r", 10);
-        const u64 send_set_size = 1ull << cmd.getOr("s", 10);
-        const u64 intersection_size = cmd.getOr("i", 32);
-        if((intersection_size > recv_set_size) | (intersection_size > send_set_size)){
-            printf("intersection_size should not be greater than set_size\n");
+
+        // 获取文件路径参数
+        std::string receiver_file = cmd.getOr("rf", std::string(""));
+        std::string sender_file = cmd.getOr("sf", std::string(""));
+        std::string result_file = cmd.getOr("if", std::string(""));
+
+        // 检查文件路径是否提供
+        if (receiver_file.empty() || sender_file.empty()) {
+            std::cout << "Error: Receiver or sender file path not provided!" << std::endl;
+            std::cout << "Usage: -rf <receiver.txt> -sf <sender.txt>" << std::endl;
             return;
         }
+
+        // 读取接收方数据
+        std::ifstream recv_ifs(receiver_file);
+        if (!recv_ifs.is_open()) {
+            std::cout << "Error: Unable to open receiver file: " << receiver_file << std::endl;
+            return;
+        }
+
+        std::vector<std::vector<u64>> receiver_elements;
+        std::string recv_line;
+        while (std::getline(recv_ifs, recv_line)) {
+            std::istringstream iss(recv_line);
+            std::vector<u64> point;
+            u64 value;
+            while (iss >> value) {
+                point.push_back(value);
+            }
+            if (point.size() != dimension) {
+                std::cout << "Error: Dimension mismatch in receiver file!" << std::endl;
+                return;
+            }
+            receiver_elements.push_back(std::move(point));
+        }
+        recv_ifs.close();
+        const u64 recv_set_size = receiver_elements.size();
+
+        // 读取发送方数据
+        std::ifstream send_ifs(sender_file);
+        if (!send_ifs.is_open()) {
+            std::cout << "Error: Unable to open sender file: " << sender_file << std::endl;
+            return;
+        }
+
+        std::vector<std::vector<u64>> sender_elements;
+        std::string send_line;
+        while (std::getline(send_ifs, send_line)) {
+            std::istringstream iss(send_line);
+            std::vector<u64> point;
+            u64 value;
+            while (iss >> value) {
+                point.push_back(value);
+            }
+            if (point.size() != dimension) {
+                std::cout << "Error: Dimension mismatch in sender file!" << std::endl;
+                return;
+            }
+            sender_elements.push_back(std::move(point));
+        }
+        send_ifs.close();
+        const u64 send_set_size = sender_elements.size();
 
         std::cout << "recv_set_size: " << recv_set_size << std::endl;
         std::cout << "send_set_size: " << send_set_size << std::endl;
         std::cout << "dimension    : " << dimension << std::endl;
         std::cout << "delta        : " << delta << std::endl;
         std::cout << "distance     : l_" << p << std::endl;
-
-        std::vector<std::vector<u64>> receiver_elements(recv_set_size, std::vector<u64>(dimension, 0));
-        std::vector<std::vector<u64>> sender_elements(send_set_size, std::vector<u64>(dimension, 0));
-
-        std::cout << "data init start" << std::endl;
-        for(u64 i = 0; i < recv_set_size; i++){
-            for(u64 j = 0; j < dimension; j++){
-                receiver_elements[i][j] = (prng.get<u64>()) % ((0xffff'ffff'ffff'ffff) - 3 * delta) + 1.5 * delta;
-            }
-        }
-
-        for(u64 i = 0; i < send_set_size; i++){
-            for(u64 j = 0; j < dimension; j++){
-                sender_elements[i][j] = (prng.get<u64>()) % ((0xffff'ffff'ffff'ffff) - 3 * delta) + 1.5 * delta;
-            }
-        }
-
-
-        u64 base_pos = (prng.get<u64>()) % (send_set_size - intersection_size - 1);
-        for(u64 i = base_pos; i < base_pos + intersection_size; i++){
-            for(u64 j = 0; j < dimension; j++){
-                sender_elements[i][j] = receiver_elements[i - base_pos][j];
-            }
-            for(u64 j = 0; j < 1; j++){
-                sender_elements[i][j] += ((i8)((prng.get<u8>()) % (delta - 1)) - delta / 2);
-            }
-        }
 
         std::cout << "data init done" << std::endl;
 
@@ -171,7 +199,8 @@ namespace osuCrypto
         &receiver_elements, &recv_vec_dhkk_seedsum,
         &fmat_vals,
         dimension, delta, p,
-        paillier_key, recv_dh_k);
+        paillier_key, recv_dh_k,
+        result_file);
 
 		std::thread thread_fmat_send(fm_paillier::fmat_paillier_send_online, &sockets[1],
         &sender_elements, &send_vec_dhkk_seedsum,
@@ -226,54 +255,81 @@ namespace osuCrypto
 
     void test_our_linfty_paillier_fpsi(const CLP& cmd){
         std::cout << "test_our_linfty_paillier_fpsi ----------------------------" << std::endl;
+       
         PRNG prng(oc::sysRandomSeed());
 
         const u64 dimension = cmd.getOr("d", 2);
         const u64 delta = cmd.getOr("delta", 10);
         const u64 side_length = 1;
-        const u64 p = 0;
-        const u64 recv_set_size = 1ull << cmd.getOr("r", 10);
-        const u64 send_set_size = 1ull << cmd.getOr("s", 10);
-        const u64 intersection_size = cmd.getOr("i", 32);
-        if((intersection_size > recv_set_size) | (intersection_size > send_set_size)){
-            printf("intersection_size should not be greater than set_size\n");
+        const u64 p = cmd.getOr("p", 2);
+
+        // 获取文件路径参数
+        std::string receiver_file = cmd.getOr("rf", std::string(""));
+        std::string sender_file = cmd.getOr("sf", std::string(""));
+        std::string result_file = cmd.getOr("if", std::string(""));
+
+        // 检查文件路径是否提供
+        if (receiver_file.empty() || sender_file.empty()) {
+            std::cout << "Error: Receiver or sender file path not provided!" << std::endl;
+            std::cout << "Usage: -rf <receiver.txt> -sf <sender.txt>" << std::endl;
             return;
         }
 
+        // 读取接收方数据
+        std::ifstream recv_ifs(receiver_file);
+        if (!recv_ifs.is_open()) {
+            std::cout << "Error: Unable to open receiver file: " << receiver_file << std::endl;
+            return;
+        }
+
+        std::vector<std::vector<u64>> receiver_elements;
+        std::string recv_line;
+        while (std::getline(recv_ifs, recv_line)) {
+            std::istringstream iss(recv_line);
+            std::vector<u64> point;
+            u64 value;
+            while (iss >> value) {
+                point.push_back(value);
+            }
+            if (point.size() != dimension) {
+                std::cout << "Error: Dimension mismatch in receiver file!" << std::endl;
+                return;
+            }
+            receiver_elements.push_back(std::move(point));
+        }
+        recv_ifs.close();
+        const u64 recv_set_size = receiver_elements.size();
+
+        // 读取发送方数据
+        std::ifstream send_ifs(sender_file);
+        if (!send_ifs.is_open()) {
+            std::cout << "Error: Unable to open sender file: " << sender_file << std::endl;
+            return;
+        }
+
+        std::vector<std::vector<u64>> sender_elements;
+        std::string send_line;
+        while (std::getline(send_ifs, send_line)) {
+            std::istringstream iss(send_line);
+            std::vector<u64> point;
+            u64 value;
+            while (iss >> value) {
+                point.push_back(value);
+            }
+            if (point.size() != dimension) {
+                std::cout << "Error: Dimension mismatch in sender file!" << std::endl;
+                return;
+            }
+            sender_elements.push_back(std::move(point));
+        }
+        send_ifs.close();
+        const u64 send_set_size = sender_elements.size();
 
         std::cout << "recv_set_size: " << recv_set_size << std::endl;
         std::cout << "send_set_size: " << send_set_size << std::endl;
         std::cout << "dimension    : " << dimension << std::endl;
         std::cout << "delta        : " << delta << std::endl;
-        std::cout << "distance     : l_infty" << std::endl;
-
-        std::vector<std::vector<u64>> receiver_elements(recv_set_size, std::vector<u64>(dimension, 0));
-        std::vector<std::vector<u64>> sender_elements(send_set_size, std::vector<u64>(dimension, 0));
-        
-        std::cout << "data init begin" << std::endl;
-
-        for(u64 i = 0; i < recv_set_size; i++){
-            for(u64 j = 0; j < dimension; j++){
-                receiver_elements[i][j] = (prng.get<u64>()) % ((0xffff'ffff'ffff'ffff) - 3 * delta) + 1.5 * delta;
-            }
-        }
-
-        for(u64 i = 0; i < send_set_size; i++){
-            for(u64 j = 0; j < dimension; j++){
-                sender_elements[i][j] = (prng.get<u64>()) % ((0xffff'ffff'ffff'ffff) - 3 * delta) + 1.5 * delta;
-            }
-        }
-
-        u64 base_pos = (prng.get<u64>()) % (send_set_size - intersection_size - 1);
-        //u64 base_pos = 0;
-        for(u64 i = base_pos; i < base_pos + intersection_size; i++){
-            for(u64 j = 0; j < dimension; j++){
-                sender_elements[i][j] = receiver_elements[i - base_pos][j];
-            }
-            for(u64 j = 0; j < 2; j++){
-                sender_elements[i][j] += ((i8)((prng.get<u8>()) % (delta - 1)) - delta / 2);
-            }
-        }
+        std::cout << "distance     : l_" << p << std::endl;
         std::cout << "data init done" << std::endl;
 
         ///////////////////////////////////////////////////////////////////////////////////////
@@ -362,7 +418,7 @@ namespace osuCrypto
         &receiver_elements, &recv_vec_dhkk_seedsum,
         &fmat_vals,
         dimension, delta,
-        paillier_key);
+        paillier_key, result_file);
 
 		std::thread thread_fmat_send(fm_paillier::fmat_paillier_linfty_send_online, &sockets[1],
         &sender_elements, &send_vec_dhkk_seedsum,
@@ -423,32 +479,82 @@ namespace osuCrypto
         const u64 dimension = cmd.getOr("hamd", 128);
         const u64 delta = cmd.getOr("hamdelta", 4);
         const u64 side_length = cmd.getOr("hamside", ((dimension / (delta + 1)) / 8) * 8);
-        const u64 recv_set_size = 1ull << cmd.getOr("hamr", 6);
-        const u64 send_set_size = 1ull << cmd.getOr("hams", 6);
+        std::string result_file = cmd.getOr("if", std::string(""));
 
-        u64 i_temp = recv_set_size;
-        if(recv_set_size > send_set_size){
-            i_temp = send_set_size;
-        }
+        // 添加命令行选项-rf和-sf
+        std::string recv_file = cmd.getOr("rf", std::string(""));
+        std::string send_file = cmd.getOr("sf", std::string(""));
 
-        const u64 intersection_size = cmd.getOr("hami", 7);
-        if((intersection_size > recv_set_size) | (intersection_size > send_set_size)){
-            printf("intersection_size should not be greater than set_size\n");
+        if (recv_file.empty() || send_file.empty()) {
+            printf("Please specify recv_set file and send_set file using -rf and -sf\n");
             return;
         }
-        if((side_length == 0 )){
+
+        // 从文件读取recv_set
+        std::vector<BitVector> recv_set;
+        std::ifstream recv_stream(recv_file);
+        std::string line;
+        while (std::getline(recv_stream, line)) {
+            if (line.empty()) continue;
+            try {
+                u64 value = std::stoull(line);
+                // 检查数值是否超出dimension位能表示的范围
+                if (value >= (1ULL << dimension)) {
+                    printf("Value %lu in recv_set exceeds %lu bits\n", value, dimension);
+                    return;
+                }
+                // 转换为dimension位的比特向量，前面补零
+                BitVector bv(dimension);
+                for (u64 i = 0; i < dimension; ++i) {
+                    u64 bit = (value >> (dimension - 1 - i)) & 1;
+                    bv[i]= bit;
+                }
+                recv_set.push_back(bv);
+            } catch (const std::exception& e) {
+                printf("Invalid number in recv_set file: %s\n", line.c_str());
+                return;
+            }
+        }
+
+        // 从文件读取send_set
+        std::vector<BitVector> send_set;
+        std::ifstream send_stream(send_file);
+        while (std::getline(send_stream, line)) {
+            if (line.empty()) continue;
+            try {
+                u64 value = std::stoull(line);
+                if (value >= (1ULL << dimension)) {
+                    printf("Value %lu in send_set exceeds %lu bits\n", value, dimension);
+                    return;
+                }
+                BitVector bv(dimension);
+                for (u64 i = 0; i < dimension; ++i) {
+                    u64 bit = (value >> (dimension - 1 - i)) & 1;
+                    bv[i] = bit;
+                }
+                send_set.push_back(bv);
+            } catch (const std::exception& e) {
+                printf("Invalid number in send_set file: %s\n", line.c_str());
+                return;
+            }
+        }
+
+        const u64 recv_set_size = recv_set.size();
+        const u64 send_set_size = send_set.size();
+
+        if ((side_length == 0)) {
             printf("dimension should not be less than (threshold + 1) * 8\n");
             return;
         }
-        if((side_length > ((dimension / (delta + 1)) / 8) * 8 )){
+        if ((side_length > ((dimension / (delta + 1)) / 8) * 8)) {
             printf("side_length should be less than ((dimension / (threshold + 1)) / 8) * 8\n");
             return;
         }
-        if((side_length % 8 != 0)){
+        if ((side_length % 8 != 0)) {
             printf("side_length mod 8 should be 0\n");
             return;
         }
-        if((pow(2, side_length) <= recv_set_size)){
+        if ((pow(2, side_length) <= recv_set_size)) {
             printf("pow(2, side_length) should be greater than recv_set_size\n");
             return;
         }
@@ -457,42 +563,33 @@ namespace osuCrypto
         std::cout << "send_set_size: " << send_set_size << std::endl;
         std::cout << "dimension    : " << dimension << std::endl;
         std::cout << "delta        : " << delta << std::endl;
-        std::cout << "intersec_size: " << intersection_size << std::endl;
         std::cout << "side_length  : " << side_length << std::endl;
 
-
-        std::vector<BitVector> recv_set;
-        std::vector<BitVector> send_set;
-        std::vector<std::vector<u64>> unique_components;
-
-        for(u64 i = 0; i< recv_set_size;i++){
-            u8 data[dimension/8 + 1];
-            prng.get<u8>(data, dimension/8);
-
-            std::vector<u64> unique_component;
-            for(u64 j = 0; j< delta +1;j++){
-                unique_component.push_back(j);
-                u64 temp_i = i;
-                for(u64 k = 0; k < (side_length / 8);k++){
-                    data[j * (side_length / 8) + k] = temp_i;
-                    temp_i >>= 8;
+        // 计算unique_components
+        std::vector<std::vector<u64>> unique_components(recv_set_size);
+        for (u64 i = 0; i < recv_set_size; i++) {
+            for (u64 j = 0; j < dimension; j++) {
+                bool unique = true;
+                for (u64 k = 0; k < recv_set_size; k++) {
+                    if (k == i) continue;
+                    if (recv_set[i][j] == recv_set[k][j]) {
+                        unique = false;
+                        break;
+                    }
+                }
+                if (unique) {
+                    unique_components[i].push_back(j);
+                    // 如果已经找到delta+1个唯一分量，提前退出内层循环
+                    if (unique_components[i].size() > delta + 1) {
+                        break;
+                    }
                 }
             }
-            unique_components.push_back(unique_component);
-
-            BitVector element_temp( data, dimension);
-            recv_set.push_back(element_temp);
-        }
-
-        for(u64 i  = 0 ; i < intersection_size; i++){
-            send_set.push_back(recv_set[i]);
-            send_set[i][2] = 1;
-        }
-
-        BitVector bitvector_temp(dimension);
-        for(u64 i  = 0 ; i < send_set_size - intersection_size; i++){
-            bitvector_temp.randomize(prng);
-            send_set.push_back(bitvector_temp);
+            // 检查unique_components[i]的大小是否不超过delta+1
+            if (unique_components[i].size() < delta + 1) {
+                printf("recv_set is not independent: no enough unique components at index %lu\n", i);
+                return;
+            }
         }
 
         pubkey_t pbkey;
@@ -525,7 +622,7 @@ namespace osuCrypto
         &recv_set, &unique_components,
         &pre_vals,
         dimension, delta, side_length,
-        &pbkey, &prkey);
+        &pbkey, &prkey, result_file);
 
 		std::thread thread_fpsi_send(Hamming::fpsi_hamming_send_online, &sockets[1],
         &send_set,
@@ -571,7 +668,7 @@ namespace osuCrypto
             mycout << "dimension:     " << dimension << std::endl;
             mycout << "delta:         " << delta << std::endl;
             mycout << "side_length:   " << side_length << std::endl;
-            mycout << "intersec_size: " << intersection_size << std::endl;
+            //mycout << "intersec_size: " << intersection_size << std::endl;
 		    mycout << "[Hamming] comm:" << ((recv_bytes_present) + (send_bytes_present)) / 1024.0 / 1024 << "MB" << std::endl;
             mycout << "[Hamming] time:" << (time) << std::endl;
             mycout.close();

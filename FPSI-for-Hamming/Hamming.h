@@ -1,5 +1,6 @@
 #pragma once
-
+#include <string>
+#include <bitset>
 #include "gm_crypto.h"
 #include "fm.h"
 #include <cryptoTools/Common/BitVector.h>
@@ -29,7 +30,7 @@ namespace osuCrypto
         std::vector<BitVector>* receiver_elements, std::vector<std::vector<osuCrypto::u64>>* unique_components,
         std::stack<std::array<std::vector<block>, 2>>* pre_vals,
         u64 dimension, u64 delta, u32 side_length,
-        pubkey_t* gm_pubkey, privkey_t* gm_prikey
+        pubkey_t* gm_pubkey, privkey_t* gm_prikey, const std::string& result_file
         );
 
 

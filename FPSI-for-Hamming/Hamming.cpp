@@ -4,6 +4,13 @@
 namespace osuCrypto
 {
     namespace Hamming{
+        
+        void printBlock(const osuCrypto::block& b, std::ostream& os = std::cout){
+        auto data = b.get<std::uint64_t>();
+        std::bitset<64> highBits(data[1]);
+        std::bitset<64> lowBits(data[0]);   
+        os << highBits.to_string() + lowBits.to_string();
+       }
         const u64 OT_NUMS_BOUND = 128UL;
         const size_t KAPPA = 128;
         std::vector<element> run_ot_receiver(coproto::LocalAsyncSocket& channel, BitVector& choices, const u64& numOTs){
@@ -78,7 +85,7 @@ namespace osuCrypto
         //         result.push_back(element(recvMsg[i]));
         //     }
         // }
-
+        
         return recvMsg;
     }
 
@@ -453,7 +460,7 @@ namespace osuCrypto
         std::vector<BitVector>* receiver_elements, std::vector<std::vector<osuCrypto::u64>>* unique_components,
         std::stack<std::array<std::vector<block>, 2>>* pre_vals,
         u64 dimension, u64 delta, u32 side_length,
-        pubkey_t* gm_pubkey, privkey_t* gm_prikey
+        pubkey_t* gm_pubkey, privkey_t* gm_prikey, const std::string& result_file
         ){
             std::vector<block> keys;
             std::vector<std::vector<block>> vals;
@@ -565,7 +572,18 @@ namespace osuCrypto
 
             //std::cout << "fmat_paillier_recv_online: run_ot_receiver begin" << std::endl;
             auto ot_result = OT_for_FPSI::run_ot_receiver(*channel, result, send_set_size);
+            std::ofstream ofs(result_file);   // 打开输出文件
+            if (!ofs.is_open()) {
+                std::cerr << "无法打开文件: " << result_file << std::endl;
+                exit(1);  // 或者抛异常
+            }
 
+            for (const auto& row : ot_result) {               
+                    printBlock(row, ofs);   // 输出到文件流
+                    ofs << std::endl;
+                }
+
+            ofs.close();  // 关闭文件
             return;
 
         }

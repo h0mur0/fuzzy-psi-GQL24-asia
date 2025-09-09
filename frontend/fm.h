@@ -3,6 +3,8 @@
 #include "rb_okvs.h"
 #include "ipcl/ipcl.hpp"
 #include <stack>
+#include <string>
+#include "cryptoTools/Common/CLP.h"
 
 #include "coproto/Socket/LocalAsyncSock.h"
 
@@ -11,6 +13,7 @@
 #include "libOTe/Base/SimplestOT.h"
 #include "libOTe/TwoChooseOne/Iknp/IknpOtExtReceiver.h"
 #include "libOTe/TwoChooseOne/Iknp/IknpOtExtSender.h"
+
 
 const oc::u32 PAILLIER_KEY_SIZE_IN_BIT = 2048;
 const oc::u32 PAILLIER_CIPHER_SIZE_IN_BLOCK = ((PAILLIER_KEY_SIZE_IN_BIT * 2) / 128);
@@ -116,7 +119,7 @@ namespace osuCrypto
         std::vector<std::vector<u64>>* receiver_elements, std::vector<Rist25519_point>* recv_vec_dhkk_seedsum,
         std::vector<std::vector<block>>* fmat_vals,
         u64 dimension, u64 delta, u64 p,
-        ipcl::KeyPair paillier_key, DH25519_number recv_dh_k);
+        ipcl::KeyPair paillier_key, DH25519_number recv_dh_k, const std::string& result_file);
 
         void fmat_paillier_send_online(coproto::LocalAsyncSocket* channel,
         std::vector<std::vector<u64>>* sender_elements, std::vector<Rist25519_point>* send_vec_dhkk_seedsum,
@@ -128,7 +131,7 @@ namespace osuCrypto
         std::vector<std::vector<u64>>* receiver_elements, std::vector<Rist25519_point>* recv_vec_dhkk_seedsum,
         std::vector<std::vector<block>>* fmat_vals,
         u64 dimension, u64 delta,
-        ipcl::KeyPair paillier_key);
+        ipcl::KeyPair paillier_key, const std::string& result_file);
 
         void fmat_paillier_linfty_send_online(coproto::LocalAsyncSocket* channel,
         std::vector<std::vector<u64>>* sender_elements, std::vector<Rist25519_point>* send_vec_dhkk_seedsum,

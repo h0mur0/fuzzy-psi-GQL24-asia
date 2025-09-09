@@ -59,6 +59,8 @@ int main(int argc, char** argv){
             << " -hamr   " << ": to choose the log_2 of receiver's input size, default n = 2^6.                  " << "\n"
             << " -hami   " << ": to choose the intersection size, default hami = 7.                              " << "\n"
             // << "-hamside " << ": to choose the bitsize of super-component, default hamside = ((dimension / (delta + 1)) / 8) * 8." << "\n"
+            << "-rf " << ": to choose the path of receiver's data." << "\n"
+            << "-sf " << ": to choose the path of sender's data." << "\n"
             ;
 
 	return 0;
