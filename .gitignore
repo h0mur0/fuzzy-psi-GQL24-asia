@@ -165,6 +165,8 @@ packages/*
 # (and the packages folder if the line above has been uncommented)
 !packages/build/
 
+build1/
+build2/
 # Windows Azure Build Output
 csx/
 *.build.csdef

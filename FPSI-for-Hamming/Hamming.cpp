@@ -13,7 +13,7 @@ namespace osuCrypto
        }
         const u64 OT_NUMS_BOUND = 128UL;
         const size_t KAPPA = 128;
-        std::vector<element> run_ot_receiver(coproto::LocalAsyncSocket& channel, BitVector& choices, const u64& numOTs){
+        std::vector<element> run_ot_receiver(coproto::Socket& channel, BitVector& choices, const u64& numOTs){
         // std::vector<element> result;
         std::vector<block> recvMsg(numOTs);
 
@@ -89,7 +89,7 @@ namespace osuCrypto
         return recvMsg;
     }
 
-        void run_ot_sender(coproto::LocalAsyncSocket& channel, std::vector<std::array<element, 2>>& sendMsg)
+        void run_ot_sender(coproto::Socket& channel, std::vector<std::array<element, 2>>& sendMsg)
         {
             const u64 numOTs(sendMsg.size());
 
@@ -229,7 +229,7 @@ namespace osuCrypto
             return;
         }
 
-        bool run_ipmt_receiver(coproto::LocalAsyncSocket& channel, const u64& x, const int& log_delta, const DH25519_number& recv_sk){
+        bool run_ipmt_receiver(coproto::Socket& channel, const u64& x, const int& log_delta, const DH25519_number& recv_sk){
 
             std::vector<DH25519_point> recv_prefix_k, send_prefix_k, recv_prefix_kk, send_prefix_kk;
             std::vector<block> recv_prefixes;
@@ -265,7 +265,7 @@ namespace osuCrypto
             return temp;
         }
 
-        void run_ipmt_sender(coproto::LocalAsyncSocket& channel, const u64& a, const u64& b, const DH25519_number& send_sk){
+        void run_ipmt_sender(coproto::Socket& channel, const u64& a, const u64& b, const DH25519_number& send_sk){
             std::vector<DH25519_point> recv_prefix_k, send_prefix_k, recv_prefix_kk;
             std::vector<block> send_prefixes;
             interval_to_prefix(a, b, send_prefixes);
@@ -456,7 +456,7 @@ namespace osuCrypto
             return;
         }
 
-        void fpsi_hamming_recv_online(coproto::LocalAsyncSocket* channel,
+        void fpsi_hamming_recv_online(coproto::Socket* channel,
         std::vector<BitVector>* receiver_elements, std::vector<std::vector<osuCrypto::u64>>* unique_components,
         std::stack<std::array<std::vector<block>, 2>>* pre_vals,
         u64 dimension, u64 delta, u32 side_length,
@@ -589,7 +589,7 @@ namespace osuCrypto
         }
 
 
-        void fpsi_hamming_send_online(coproto::LocalAsyncSocket* channel,
+        void fpsi_hamming_send_online(coproto::Socket* channel,
         std::vector<BitVector>* sender_elements,
         std::stack<BitVector>* masks, std::stack<std::vector<std::vector<block>>>* masks_ciphers_block,
         u64 dimension, u64 delta, u32 side_length,

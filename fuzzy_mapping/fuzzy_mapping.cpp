@@ -3,6 +3,203 @@
 
 namespace osuCrypto
 {
+    void printBlock1(const osuCrypto::block& b, std::ostream& os = std::cout){
+        auto data = b.get<std::uint64_t>();
+        //std::bitset<64> highBits(data[1]);
+        //std::bitset<64> lowBits(data[0]);   
+        os << std::to_string(data[0]) << " " << std::to_string(data[1]);
+       }
+       
+    std::string point_to_string(Rist25519_point P) {
+        std::stringstream ss;
+        ss << std::hex << std::setfill('0');
+        for (size_t i = 0; i < P.size; ++i) {
+            ss << std::setw(2) << static_cast<int>(P.data[i]);
+        }
+        return ss.str();
+    }
+
+std::string monty25519ToString1(const osuCrypto::Sodium::Monty25519& point) {
+    std::stringstream ss;
+    ss << std::hex << std::setfill('0');
+    for (size_t i = 0; i < point.size; ++i) {
+        ss << std::setw(2) << static_cast<int>(point.data[i]);
+    }
+    return ss.str();
+}
+
+
+// 判断是否为 std::vector
+template<typename T> struct is_std_vector : std::false_type {};
+template<typename U, typename Alloc>
+struct is_std_vector<std::vector<U, Alloc>> : std::true_type {};
+
+// 判断类型是否可流式输出到 std::ostream（SFINAE）
+template<typename T, typename = void>
+struct is_streamable : std::false_type {};
+
+template<typename T>
+struct is_streamable<T, std::void_t<decltype(std::declval<std::ostream&>() << std::declval<const T&>())>>
+    : std::true_type {};
+
+
+// 辅助：打印单个元素（顺序：block -> Monty25519 -> Rist25519_point -> 可流式输出 -> 否则 "print error"）
+template <typename Elem>
+void printElementOrError(const Elem& e, std::ostream& os) {
+    using DecayElem = std::remove_cv_t<std::remove_reference_t<Elem>>;
+
+    if constexpr (std::is_same_v<DecayElem, osuCrypto::block>) {
+        // 使用你已有的 printBlock
+        printBlock(e, os);
+    }
+    else if constexpr (std::is_same_v<DecayElem, osuCrypto::Sodium::Monty25519>) {
+        os << monty25519ToString(e);
+    }
+    else if constexpr (std::is_same_v<DecayElem, Rist25519_point>) {
+        os << point_to_string(e);
+    }
+    else if constexpr (is_streamable<Elem>::value) {
+        os << e;
+    }
+    else {
+        os << "print error";
+    }
+}
+
+template <typename T>
+void debugSend(coproto::Socket* socket, const T& data, const std::string& description = "") {
+    coproto::sync_wait(socket->flush());
+    std::ofstream debugFile("debug_all.txt", std::ios::app);
+    if (!debugFile) return;
+
+    debugFile << "输出: " << description << " - ";
+
+    std::ios_base::fmtflags oldFlags = debugFile.flags();
+    char oldFill = debugFile.fill();
+
+    using DecayT = std::remove_cv_t<std::remove_reference_t<T>>;
+
+    // osuCrypto::block
+    if constexpr (std::is_same_v<DecayT, osuCrypto::block>) {
+        printBlock(data, debugFile);
+    }
+    // vector<char>/vector<unsigned char>/vector<uint8_t>
+    else if constexpr (std::is_same_v<DecayT, std::vector<char>> ||
+                       std::is_same_v<DecayT, std::vector<unsigned char>> ||
+                       std::is_same_v<DecayT, std::vector<std::uint8_t>>) {
+        for (auto byte : data) {
+            debugFile << std::hex << std::setw(2) << std::setfill('0')
+                      << static_cast<int>(static_cast<unsigned char>(byte)) << " ";
+        }
+    }
+    // vector<block>
+    else if constexpr (std::is_same_v<DecayT, std::vector<osuCrypto::block>>) {
+        bool first = true;
+        for (const auto& b : data) {
+            if (!first) debugFile << " | ";
+            printBlock(b, debugFile);
+            first = false;
+        }
+    }
+    // std::array<Rist25519_point, 2> 特判
+    else if constexpr (std::is_same_v<DecayT, std::array<Rist25519_point, 2>>) {
+        debugFile << "[";
+        debugFile << point_to_string(data[0]) << ", " << point_to_string(data[1]);
+        debugFile << "]";
+    }
+    // 其它 std::vector<...>：逐元素打印（元素不可打印则 "print error"）
+    else if constexpr (is_std_vector<DecayT>::value) {
+        debugFile << "[";
+        bool first = true;
+        using Elem = typename DecayT::value_type;
+        for (const auto& e : data) {
+            if (!first) debugFile << ", ";
+            printElementOrError<Elem>(e, debugFile);
+            first = false;
+        }
+        debugFile << "]";
+    }
+    // 其它类型：能 << 则输出，否则 "print error"
+    else {
+        if constexpr (is_streamable<DecayT>::value) {
+            debugFile << data;
+        } else {
+            debugFile << "print error";
+        }
+    }
+
+    debugFile.flags(oldFlags);
+    debugFile.fill(oldFill);
+    debugFile << std::dec << std::endl;
+    debugFile.close();
+
+    coproto::sync_wait(socket->send(data));
+}
+
+// ---------- debugRecvResize ----------
+template <typename T>
+void debugRecvResize(coproto::Socket* socket, T& data, const std::string& description = "") {
+    coproto::sync_wait(socket->flush());
+    coproto::sync_wait(socket->recvResize(data));
+
+    std::ofstream debugFile("debug_all.txt", std::ios::app);
+    if (!debugFile) return;
+
+    debugFile << "输入: " << description << " - ";
+
+    std::ios_base::fmtflags oldFlags = debugFile.flags();
+    char oldFill = debugFile.fill();
+
+    using DecayT = std::remove_cv_t<std::remove_reference_t<T>>;
+
+    if constexpr (std::is_same_v<DecayT, osuCrypto::block>) {
+        printBlock(data, debugFile);
+    }
+    else if constexpr (std::is_same_v<DecayT, std::vector<char>> ||
+                       std::is_same_v<DecayT, std::vector<unsigned char>> ||
+                       std::is_same_v<DecayT, std::vector<std::uint8_t>>) {
+        for (auto byte : data) {
+            debugFile << std::hex << std::setw(2) << std::setfill('0')
+                      << static_cast<int>(static_cast<unsigned char>(byte)) << " ";
+        }
+    }
+    else if constexpr (std::is_same_v<DecayT, std::vector<osuCrypto::block>>) {
+        bool first = true;
+        for (const auto& b : data) {
+            if (!first) debugFile << " | ";
+            printBlock(b, debugFile);
+            first = false;
+        }
+    }
+    else if constexpr (std::is_same_v<DecayT, std::array<Rist25519_point, 2>>) {
+        debugFile << "[";
+        debugFile << point_to_string(data[0]) << ", " << point_to_string(data[1]);
+        debugFile << "]";
+    }
+    else if constexpr (is_std_vector<DecayT>::value) {
+        debugFile << "[";
+        bool first = true;
+        using Elem = typename DecayT::value_type;
+        for (const auto& e : data) {
+            if (!first) debugFile << ", ";
+            printElementOrError<Elem>(e, debugFile);
+            first = false;
+        }
+        debugFile << "]";
+    }
+    else {
+        if constexpr (is_streamable<DecayT>::value) {
+            debugFile << data;
+        } else {
+            debugFile << "print error";
+        }
+    }
+
+    debugFile.flags(oldFlags);
+    debugFile.fill(oldFill);
+    debugFile << std::dec << std::endl;
+    debugFile.close();
+}
     namespace fmap{
         i32 find(const std::vector<segment>& segments, const u64& x){
             u32 begin(0), end(segments.size() - 1);
@@ -124,6 +321,8 @@ namespace osuCrypto
         const u32& dimension, const i32& delta, const i32& side_length, const Rist25519_number& sk){
             
             PRNG prng(oc::sysRandomSeed());
+            //PRNG prng(osuCrypto::block(0,0));
+
             Rist25519_number rG, sk_rG;
             u64 num_interval_per_element_per_dimension(((2 * delta + 1) / side_length) + 2);
 
@@ -156,6 +355,7 @@ namespace osuCrypto
         std::vector<Rist25519_number>& masks, std::vector<Rist25519_number>& masks_inv,
         const std::array<Rist25519_point, 2>& pk){
             PRNG prng(oc::sysRandomSeed());
+            // PRNG prng(osuCrypto::block(0,0));
             Rist25519_number temp_mask;
             std::array<Rist25519_point, 2> temp_enc_kq;
             for(auto i = 0; i < elements_size; i++){
@@ -235,6 +435,7 @@ namespace osuCrypto
             rb_okvs.init(okvs_n, 0.1, lambda, seed);
 
             PRNG prng(oc::sysRandomSeed());
+            // PRNG prng(osuCrypto::block(0,0));
 
 
             for(auto i = 0; i < elements.size(); i++){
@@ -289,7 +490,7 @@ namespace osuCrypto
         }
 
 ///////////////////////////////////////////////////////////////////////
-        void fmap_recv_online(coproto::LocalAsyncSocket* channel,
+        void fmap_recv_online(coproto::Socket* channel,
         std::vector<std::vector<u64>>* receiver_elements,
         std::vector<std::vector<Rist25519_number>>* recv_values,
         std::stack<Rist25519_number>* recv_vals_candidate_r, std::stack<Rist25519_number>* recv_vals_candidate_skr,
@@ -325,9 +526,11 @@ namespace osuCrypto
                 }
             }
             //std::cout << "fmap_recv_online: fmap_codeWords send recv begin" << std::endl;
-            coproto::sync_wait((*channel).send(recv_fmap_codeWords_net));
+            // coproto::sync_wait((*channel).send(recv_fmap_codeWords_net));
+            debugSend(channel,recv_fmap_codeWords_net,"recv_fmap_codeWords_net");
             //std::cout << "fmap_recv_online: fmap_codeWords send done" << std::endl;
-            coproto::sync_wait((*channel).recvResize(send_fmap_codeWords_net));
+            // coproto::sync_wait((*channel).recvResize(send_fmap_codeWords_net));
+            debugRecvResize(channel,send_fmap_codeWords_net,"send_fmap_codeWords_net");
             //std::cout << "fmap_recv_online: fmap_codeWords send recv done" << std::endl;
 
             
@@ -340,16 +543,20 @@ namespace osuCrypto
 
             u64 send_fmap_keys_size;
             //std::cout << "fmap_recv_online: recv_fmap_keys send recv begin" << std::endl;
-            coproto::sync_wait((*channel).send(recv_fmap_keys.size()));
+            // coproto::sync_wait((*channel).send(recv_fmap_keys.size()));
+            debugSend(channel,recv_fmap_keys.size(),"recv_fmap_keys.size()");
             //std::cout << "fmap_recv_online: recv_fmap_keys send done" << std::endl;
-            coproto::sync_wait((*channel).recvResize(send_fmap_keys_size));
+            // coproto::sync_wait((*channel).recvResize(send_fmap_keys_size));
+            debugRecvResize(channel,send_fmap_keys_size,"send_fmap_keys_size");
             //std::cout << "fmap_recv_online: recv_fmap_keys send recv done" << std::endl;
 
             std::array<Rist25519_point, 2> send_pk;
             //std::cout << "fmap_recv_online: recv_pk send recv begin" << std::endl;
-            coproto::sync_wait((*channel).send(recv_pk));
+            // coproto::sync_wait((*channel).send(recv_pk));
+            debugSend(channel,recv_pk,"recv_pk");
             //std::cout << "fmap_recv_online: recv_pk send done" << std::endl;
-            coproto::sync_wait((*channel).recvResize(send_pk));
+            // coproto::sync_wait((*channel).recvResize(send_pk));
+            debugRecvResize(channel,send_pk,"send_pk");
             //std::cout << "fmap_recv_online: recv_pk send recv done" << std::endl;
 
             std::vector<Rist25519_point> recv_vec_enc_mask_seedsum;
@@ -357,9 +564,11 @@ namespace osuCrypto
 
             std::vector<Rist25519_point> send_vec_enc_mask_seedsum;
             //std::cout << "fmap_recv_online: vec_enc_mask_seedsum send recv begin" << std::endl;
-            coproto::sync_wait((*channel).send(recv_vec_enc_mask_seedsum));
+            // coproto::sync_wait((*channel).send(recv_vec_enc_mask_seedsum));
+            debugSend(channel,recv_vec_enc_mask_seedsum,"recv_vec_enc_mask_seedsum");
             //std::cout << "fmap_recv_online: vec_enc_mask_seedsum send done" << std::endl;
-            coproto::sync_wait((*channel).recvResize(send_vec_enc_mask_seedsum));
+            // coproto::sync_wait((*channel).recvResize(send_vec_enc_mask_seedsum));
+            debugRecvResize(channel,send_vec_enc_mask_seedsum,"send_vec_enc_mask_seedsum");
             //std::cout << "fmap_recv_online: vec_enc_mask_seedsum send recv done" << std::endl;
 
             std::vector<Rist25519_point> send_dhk_mask_seedsum;
@@ -367,16 +576,18 @@ namespace osuCrypto
 
             std::vector<Rist25519_point> recv_dhk_mask_seedsum;
             //std::cout << "fmap_recv_online: dhk_mask_seedsum send recv begin" << std::endl;
-            coproto::sync_wait((*channel).send(send_dhk_mask_seedsum));
+            // coproto::sync_wait((*channel).send(send_dhk_mask_seedsum));
+            debugSend(channel,send_dhk_mask_seedsum,"send_dhk_mask_seedsum");
             //std::cout << "fmap_recv_online: dhk_mask_seedsum send done" << std::endl;
-            coproto::sync_wait((*channel).recvResize(recv_dhk_mask_seedsum));
+            // coproto::sync_wait((*channel).recvResize(recv_dhk_mask_seedsum));
+            debugRecvResize(channel,recv_dhk_mask_seedsum,"recv_dhk_mask_seedsum");
             //std::cout << "fmap_recv_online: dhk_mask_seedsum send recv done" << std::endl;
             fmap::get_dhkk_seedsum(recv_dhk_mask_seedsum, *recv_masks_inv, *recv_vec_dhkk_seedsum, recv_dh_sk);
-
+            //std::this_thread::sleep_for(std::chrono::seconds(1));
             return;
         }
 
-        void fmap_send_online(coproto::LocalAsyncSocket* channel,
+        void fmap_send_online(coproto::Socket* channel,
         std::vector<std::vector<u64>>* sender_elements,
         std::vector<std::vector<Rist25519_number>>* send_values,
         std::stack<Rist25519_number>* send_vals_candidate_r, std::stack<Rist25519_number>* send_vals_candidate_skr,
@@ -409,8 +620,10 @@ namespace osuCrypto
                     send_fmap_codeWords_net[i * EC_CIPHER_SIZE_IN_NUMBER + j] = send_fmap_codeWords[i][j];
                 }
             }
-            coproto::sync_wait((*channel).recvResize(recv_fmap_codeWords_net));
-            coproto::sync_wait((*channel).send(send_fmap_codeWords_net));
+            // coproto::sync_wait((*channel).recvResize(recv_fmap_codeWords_net));
+            debugRecvResize(channel,recv_fmap_codeWords_net,"recv_fmap_codeWords_net");
+            // coproto::sync_wait((*channel).send(send_fmap_codeWords_net));
+            debugSend(channel,send_fmap_codeWords_net,"send_fmap_codeWords_net");
 
             
             std::vector<std::vector<Rist25519_point>> recv_fmap_codeWords((recv_fmap_codeWords_net.size() / EC_CIPHER_SIZE_IN_NUMBER), std::vector<Rist25519_point>(EC_CIPHER_SIZE_IN_NUMBER));
@@ -425,28 +638,36 @@ namespace osuCrypto
             // coproto::sync_wait((*channel).send(send_fmap_codeWords));
 
             u64 recv_fmap_keys_size;
-            coproto::sync_wait((*channel).recvResize(recv_fmap_keys_size));
-            coproto::sync_wait((*channel).send(send_fmap_keys.size()));
+            // coproto::sync_wait((*channel).recvResize(recv_fmap_keys_size));
+            debugRecvResize(channel,recv_fmap_keys_size,"recv_fmap_keys_size");
+            // coproto::sync_wait((*channel).send(send_fmap_keys.size()));
+            debugSend(channel,send_fmap_keys.size(),"send_fmap_keys.size()");
 
             std::array<Rist25519_point, 2> recv_pk;
-            coproto::sync_wait((*channel).recvResize(recv_pk));
-            coproto::sync_wait((*channel).send(send_pk));
+            // coproto::sync_wait((*channel).recvResize(recv_pk));
+            debugRecvResize(channel,recv_pk,"recv_pk");
+            //coproto::sync_wait((*channel).send(send_pk));
+            debugSend(channel,send_pk,"send_pk");
 
             std::vector<Rist25519_point> send_vec_enc_mask_seedsum;
             fmap::get_vec_enc_mask_seedsum(*sender_elements, recv_fmap_codeWords, *send_masks, send_seeds, send_vec_enc_mask_seedsum, dimension, side_length, recv_fmap_keys_size, recv_pk);
 
             std::vector<Rist25519_point> recv_vec_enc_mask_seedsum;
-            coproto::sync_wait((*channel).recvResize(recv_vec_enc_mask_seedsum));
-            coproto::sync_wait((*channel).send(send_vec_enc_mask_seedsum));
+            // coproto::sync_wait((*channel).recvResize(recv_vec_enc_mask_seedsum));
+            debugRecvResize(channel,recv_vec_enc_mask_seedsum,"recv_vec_enc_mask_seedsum");
+            //coproto::sync_wait((*channel).send(send_vec_enc_mask_seedsum));
+            debugSend(channel,send_vec_enc_mask_seedsum,"send_vec_enc_mask_seedsum");
 
             std::vector<Rist25519_point> recv_dhk_mask_seedsum;
             fmap::get_dhk_mask_seedsum(recv_vec_enc_mask_seedsum, recv_dhk_mask_seedsum, send_sk, send_dh_sk);
 
             std::vector<Rist25519_point> send_dhk_mask_seedsum;
-            coproto::sync_wait((*channel).recvResize(send_dhk_mask_seedsum));
-            coproto::sync_wait((*channel).send(recv_dhk_mask_seedsum));
+            // coproto::sync_wait((*channel).recvResize(send_dhk_mask_seedsum));
+            debugRecvResize(channel,send_dhk_mask_seedsum,"send_dhk_mask_seedsum");
+            // coproto::sync_wait((*channel).send(recv_dhk_mask_seedsum));
+            debugSend(channel,recv_dhk_mask_seedsum,"recv_dhk_mask_seedsum");
             fmap::get_dhkk_seedsum(send_dhk_mask_seedsum, *send_masks_inv, *send_vec_dhkk_seedsum, send_dh_sk);
-            
+            //std::this_thread::sleep_for(std::chrono::seconds(1));
             return;
         }
 

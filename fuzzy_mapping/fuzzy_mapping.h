@@ -2,9 +2,13 @@
 
 #include "rb_okvs.h"
 #include <stack>
-#include <stack>
+#include <thread>
+#include <chrono>
+#include <fstream>
+#include <iostream>
 
 #include "coproto/Socket/LocalAsyncSock.h"
+#include "coproto/Socket/AsioSocket.h"
 
 #include <cryptoTools/Common/BitVector.h>
 #include "libOTe/Base/BaseOT.h"
@@ -59,7 +63,7 @@ namespace osuCrypto
 
 ///////////////////////////////////////////////////////////////////////
 //run
-        void fmap_recv_online(coproto::LocalAsyncSocket* channel,
+        void fmap_recv_online(coproto::Socket* channel,
         std::vector<std::vector<u64>>* receiver_elements,
         std::vector<std::vector<Rist25519_number>>* recv_values,
         std::stack<Rist25519_number>* recv_vals_candidate_r, std::stack<Rist25519_number>* recv_vals_candidate_skr,
@@ -68,7 +72,7 @@ namespace osuCrypto
         u32 dimension, i32 delta, i32 side_length,
         Rist25519_number recv_sk, std::array<Rist25519_point, 2> recv_pk, Rist25519_number recv_dh_sk);
 
-        void fmap_send_online(coproto::LocalAsyncSocket* channel,
+        void fmap_send_online(coproto::Socket* channel,
         std::vector<std::vector<u64>>* sender_elements,
         std::vector<std::vector<Rist25519_number>>* send_values,
         std::stack<Rist25519_number>* send_vals_candidate_r, std::stack<Rist25519_number>* send_vals_candidate_skr,

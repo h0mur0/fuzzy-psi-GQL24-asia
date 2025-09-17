@@ -4,9 +4,12 @@
 #include "ipcl/ipcl.hpp"
 #include <stack>
 #include <string>
+#include <iostream>
+#include <fstream>
 #include "cryptoTools/Common/CLP.h"
 
 #include "coproto/Socket/LocalAsyncSock.h"
+#include "coproto/Socket/AsioSocket.h"
 
 #include <cryptoTools/Common/BitVector.h>
 #include "libOTe/Base/BaseOT.h"
@@ -33,9 +36,9 @@ namespace osuCrypto
     namespace OT_for_FPSI{
         const u64 OT_NUMS_BOUND = 128UL;
         const size_t KAPPA = 128;
-        std::vector<element> run_ot_receiver(coproto::LocalAsyncSocket& channel, BitVector& choices, const u64& numOTs);
+        std::vector<element> run_ot_receiver(coproto::Socket& channel, BitVector& choices, const u64& numOTs);
 
-        void run_ot_sender(coproto::LocalAsyncSocket& channel, std::vector<std::array<element, 2>> sendMsg);
+        void run_ot_sender(coproto::Socket& channel, std::vector<std::array<element, 2>> sendMsg);
 
     }
 
@@ -115,25 +118,25 @@ namespace osuCrypto
         void prefixes_check(const std::vector<std::vector<DH25519_point>>& send_prefixes_kk, const std::vector<std::vector<DH25519_point>>& recv_prefixes_kk,
                             std::vector<bool>& result);
 
-        void fmat_paillier_recv_online(coproto::LocalAsyncSocket* channel,
+        void fmat_paillier_recv_online(coproto::Socket* channel,
         std::vector<std::vector<u64>>* receiver_elements, std::vector<Rist25519_point>* recv_vec_dhkk_seedsum,
         std::vector<std::vector<block>>* fmat_vals,
         u64 dimension, u64 delta, u64 p,
         ipcl::KeyPair paillier_key, DH25519_number recv_dh_k, const std::string& result_file);
 
-        void fmat_paillier_send_online(coproto::LocalAsyncSocket* channel,
+        void fmat_paillier_send_online(coproto::Socket* channel,
         std::vector<std::vector<u64>>* sender_elements, std::vector<Rist25519_point>* send_vec_dhkk_seedsum,
         std::vector<DH25519_point>* send_prefixes_k, ipcl::CipherText* vec_mask_ct,
         u64 dimension, u64 delta, u64 p,
         ipcl::PublicKey paillier_pub_key, DH25519_number send_dh_k);
 
-        void fmat_paillier_linfty_recv_online(coproto::LocalAsyncSocket* channel,
+        void fmat_paillier_linfty_recv_online(coproto::Socket* channel,
         std::vector<std::vector<u64>>* receiver_elements, std::vector<Rist25519_point>* recv_vec_dhkk_seedsum,
         std::vector<std::vector<block>>* fmat_vals,
         u64 dimension, u64 delta,
         ipcl::KeyPair paillier_key, const std::string& result_file);
 
-        void fmat_paillier_linfty_send_online(coproto::LocalAsyncSocket* channel,
+        void fmat_paillier_linfty_send_online(coproto::Socket* channel,
         std::vector<std::vector<u64>>* sender_elements, std::vector<Rist25519_point>* send_vec_dhkk_seedsum,
         u64 dimension, u64 delta,
         ipcl::PublicKey paillier_pub_key);
@@ -190,13 +193,13 @@ namespace osuCrypto
                             std::vector<FM25519_point>& vec_H_pow_a,
                             const FM25519_point& G, const FM25519_point& H);                              
                 
-        void fmat_ec_recv_online(coproto::LocalAsyncSocket* channel,
+        void fmat_ec_recv_online(coproto::Socket* channel,
         std::vector<std::vector<u64>>* receiver_elements, std::vector<FM25519_point>* recv_vec_dhkk_seedsum,
         std::vector<std::vector<Rist25519_number>>* fmat_vals,
         u64 dimension, u64 delta,
         Rist25519_number recv_sk);
 
-        void fmat_ec_send_online(coproto::LocalAsyncSocket* channel,
+        void fmat_ec_send_online(coproto::Socket* channel,
         std::vector<std::vector<u64>>* sender_elements, std::vector<Rist25519_point>* send_vec_dhkk_seedsum,
         std::vector<FM25519_point>* vec_G_pow_a, std::vector<FM25519_number>* vec_b, std::vector<FM25519_point>* vec_H_pow_a,
         u64 dimension, u64 delta);
